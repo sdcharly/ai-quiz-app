@@ -9,6 +9,7 @@ import config from '../utils/config';
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [availableQuizzes, setAvailableQuizzes] = useState([]);
+  const [completedQuizzes, setCompletedQuizzes] = useState([]);
   const [error, setError] = useState('');
   const user = useSelector(selectCurrentUser);
   const token = useSelector(selectCurrentToken);
@@ -22,10 +23,15 @@ export default function Dashboard() {
           });
           setProjects(response.data);
         } else {
-          const response = await axios.get(`${config.API_URL}/projects/available`, {
+          const availableRes = await axios.get(`${config.API_URL}/projects/available`, {
             headers: { 'x-auth-token': token }
           });
-          setAvailableQuizzes(response.data);
+          setAvailableQuizzes(availableRes.data);
+          
+          const completedRes = await axios.get(`${config.API_URL}/quizzes/completed`, {
+            headers: { 'x-auth-token': token }
+          });
+          setCompletedQuizzes(completedRes.data);
         }
       } catch (err) {
         setError(err.response?.data?.msg || 'An error occurred');
@@ -53,7 +59,11 @@ export default function Dashboard() {
             <ul>
               {projects.map(project => (
                 <li key={project._id} className="mb-2">
-                  {project.name} - Questions: {project.questionCount}, Duration: {project.quizDuration} minutes
+                  <Link href={`/project/${project._id}`}>
+                    <span className="text-blue-500 hover:underline">
+                      {project.name} - Questions: {project.questionCount}, Duration: {project.quizDuration} minutes
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -65,7 +75,7 @@ export default function Dashboard() {
         <div>
           <h2 className="text-2xl font-bold mb-4">Available Quizzes</h2>
           {availableQuizzes.length > 0 ? (
-            <ul>
+            <ul className="mb-8">
               {availableQuizzes.map(quiz => (
                 <li key={quiz._id} className="mb-2">
                   <Link href={`/quiz/${quiz._id}`}>
@@ -75,7 +85,22 @@ export default function Dashboard() {
               ))}
             </ul>
           ) : (
-            <p>No quizzes available at the moment.</p>
+            <p className="mb-8">No quizzes available at the moment.</p>
+          )}
+          
+          <h2 className="text-2xl font-bold mb-4">Completed Quizzes</h2>
+          {completedQuizzes.length > 0 ? (
+            <ul>
+              {completedQuizzes.map(quiz => (
+                <li key={quiz._id} className="mb-2">
+                  <Link href={`/quiz-results/${quiz._id}`}>
+                    <span className="text-blue-500 hover:underline">{quiz.project.name} - Score: {quiz.score}/{quiz.questions.length}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>You haven't completed any quizzes yet.</p>
           )}
         </div>
       )}
