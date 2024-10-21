@@ -3,6 +3,7 @@ const router = express.Router();
 const Quiz = require('../models/Quiz');
 const Project = require('../models/Project');
 const auth = require('../middleware/auth');
+const { generateQuestions } = require('../utils/questionGenerator');
 
 // @route   POST api/quizzes/start
 // @desc    Start a new quiz
@@ -20,23 +21,25 @@ router.post('/start', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Project not found' });
     }
 
-    // Here you would generate questions based on the project documents
-    // For now, we'll just create a placeholder quiz
+    const questions = await generateQuestions(projectId, project.questionCount);
+
     const quiz = new Quiz({
       project: projectId,
       student: req.user.id,
       startTime: new Date(),
-      questions: [
-        {
-          question: 'Placeholder question?',
-          options: ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
-          correctAnswer: 0,
-        }
-      ],
+      questions: questions,
     });
 
     await quiz.save();
-    res.json(quiz);
+
+    // Send back the quiz without the correct answers
+    const quizForStudent = quiz.toObject();
+    quizForStudent.questions = quizForStudent.questions.map(q => ({
+      question: q.question,
+      options: q.options
+    }));
+
+    res.json(quizForStudent);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
