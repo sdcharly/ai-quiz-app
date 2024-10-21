@@ -18,7 +18,48 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// ... (keep existing routes)
+// @route   POST api/projects
+// @desc    Create a new project
+// @access  Private (Admin only)
+router.post('/', auth, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ msg: 'Not authorized' });
+  }
+
+  const { name, quizDuration, questionCount } = req.body;
+
+  try {
+    const newProject = new Project({
+      name,
+      quizDuration,
+      questionCount,
+      admin: req.user.id
+    });
+
+    const project = await newProject.save();
+    res.json(project);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   GET api/projects
+// @desc    Get all projects for an admin
+// @access  Private (Admin only)
+router.get('/', auth, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ msg: 'Not authorized' });
+  }
+
+  try {
+    const projects = await Project.find({ admin: req.user.id });
+    res.json(projects);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
 
 // @route   POST api/projects/:id/upload
 // @desc    Upload a document to a project
