@@ -128,4 +128,8 @@ router.delete('/:id/document/:docIndex', auth, async (req, res) => {
   }
 });
 
+router.get('/test', (req, res) => {
+  res.send('Projects route is working');
+});
+
 module.exports = router;
