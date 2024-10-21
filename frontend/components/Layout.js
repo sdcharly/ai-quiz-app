@@ -1,10 +1,18 @@
 import Head from 'next/head';
-import { useSelector } from 'react-redux';
-import { selectIsAuthenticated } from '../store/authSlice';
+import { useSelector, useDispatch } from 'react-redux';
+import { selectIsAuthenticated, logout } from '../store/authSlice';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 const Layout = ({ children }) => {
   const isAuthenticated = useSelector(selectIsAuthenticated);
+  const dispatch = useDispatch();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    dispatch(logout());
+    router.push('/');
+  };
 
   return (
     <>
@@ -20,9 +28,14 @@ const Layout = ({ children }) => {
           </Link>
           <div>
             {isAuthenticated ? (
-              <Link href="/dashboard">
-                <span className="mr-4">Dashboard</span>
-              </Link>
+              <>
+                <Link href="/dashboard">
+                  <span className="mr-4">Dashboard</span>
+                </Link>
+                <button onClick={handleLogout} className="text-white">
+                  Logout
+                </button>
+              </>
             ) : (
               <>
                 <Link href="/login">
