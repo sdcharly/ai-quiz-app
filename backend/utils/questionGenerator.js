@@ -1,57 +1,85 @@
-const { PineconeClient } = require("@pinecone-database/pinecone");
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const PINECONE_ENVIRONMENT = process.env.PINECONE_ENVIRONMENT;
-const PINECONE_INDEX_NAME = process.env.PINECONE_INDEX_NAME;
-
-async function initPinecone() {
-  const pinecone = new PineconeClient();
-  await pinecone.init({
-    apiKey: PINECONE_API_KEY,
-    environment: PINECONE_ENVIRONMENT,
-  });
-  return pinecone;
-}
+const { OpenAI } = require("langchain/llms/openai");
+const { RetrievalQAChain } = require("langchain/chains");
+const { PineconeStore } = require("langchain/vectorstores/pinecone");
+const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
+const { initializePinecone } = require("./pinecone");
 
 async function generateQuestions(projectId, numberOfQuestions) {
-  const { OpenAI } = await import("langchain/llms/openai");
-  const { RetrievalQAChain } = await import("langchain/chains");
-  const { PineconeStore } = await import("langchain/vectorstores/pinecone");
-  const { OpenAIEmbeddings } = await import("langchain/embeddings/openai");
+  try {
+    const embeddings = new OpenAIEmbeddings({ 
+      openAIApiKey: process.env.OPENAI_API_KEY 
+    });
+    
+    const pinecone = await initializePinecone();
+    const index = pinecone.Index(process.env.PINECONE_INDEX_NAME);
 
-  const embeddings = new OpenAIEmbeddings({ openAIApiKey: OPENAI_API_KEY });
-  
-  const pinecone = await initPinecone();
-  const index = pinecone.Index(PINECONE_INDEX_NAME);
-
-  const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
-    pineconeIndex: index,
-    namespace: projectId,
-  });
-
-  const model = new OpenAI({ temperature: 0.9, openAIApiKey: OPENAI_API_KEY });
-  const chain = RetrievalQAChain.fromLLM(model, vectorStore.asRetriever());
-
-  const questions = [];
-
-  for (let i = 0; i < numberOfQuestions; i++) {
-    const response = await chain.call({
-      query: `Generate a multiple-choice question based on the documents in project ${projectId}. 
-              Provide the question, four options, and the correct answer index (0-3). 
-              Format the response as a JSON object with keys: question, options (an array), and correctAnswer.`,
+    const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
+      pineconeIndex: index,
+      namespace: projectId.toString(),
     });
 
-    try {
-      const parsedResponse = JSON.parse(response.text);
-      questions.push(parsedResponse);
-    } catch (error) {
-      console.error("Failed to parse question:", response.text);
-      console.error("Error:", error);
-    }
-  }
+    const model = new OpenAI({ 
+      temperature: 0.9, 
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: "gpt-4", // Using GPT-4 for better question generation
+    });
 
-  return questions;
+    const chain = RetrievalQAChain.fromLLM(model, vectorStore.asRetriever());
+    const questions = [];
+
+    for (let i = 0; i < numberOfQuestions; i++) {
+      const response = await chain.call({
+        query: `Generate a multiple-choice question based on the document content. 
+                The question should be challenging but fair, with four options where only one is correct.
+                Format your response as a valid JSON object with these exact keys:
+                {
+                  "question": "the question text",
+                  "options": ["option1", "option2", "option3", "option4"],
+                  "correctAnswer": 0,
+                  "explanation": "brief explanation of why the correct answer is right"
+                }`,
+      });
+
+      try {
+        const parsedResponse = JSON.parse(response.text);
+        questions.push(parsedResponse);
+      } catch (error) {
+        console.error("Failed to parse question:", response.text);
+        console.error("Error:", error);
+      }
+    }
+
+    return questions;
+  } catch (error) {
+    console.error("Error generating questions:", error);
+    throw error;
+  }
 }
 
-module.exports = { generateQuestions };
+// Function to process and embed documents
+async function processDocuments(documents, projectId) {
+  try {
+    const embeddings = new OpenAIEmbeddings({ 
+      openAIApiKey: process.env.OPENAI_API_KEY 
+    });
+
+    const pinecone = await initializePinecone();
+    const index = pinecone.Index(process.env.PINECONE_INDEX_NAME);
+
+    // Create vector store and upload embeddings
+    await PineconeStore.fromDocuments(documents, embeddings, {
+      pineconeIndex: index,
+      namespace: projectId.toString(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error processing documents:", error);
+    throw error;
+  }
+}
+
+module.exports = { 
+  generateQuestions,
+  processDocuments 
+};

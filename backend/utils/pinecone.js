@@ -8,10 +8,13 @@ async function initializePinecone() {
     cloud: process.env.PINECONE_CLOUD,
     region: process.env.PINECONE_REGION
   });
+  return pinecone;
 }
 
-async function createIndex(indexName, dimension) {
+async function ensureIndexExists(dimension = 1536) { // OpenAI embeddings are 1536 dimensions
+  const indexName = process.env.PINECONE_INDEX_NAME;
   const existingIndexes = await pinecone.listIndexes();
+  
   if (!existingIndexes.includes(indexName)) {
     await pinecone.createIndex({
       createRequest: {
@@ -30,21 +33,28 @@ async function createIndex(indexName, dimension) {
   } else {
     console.log(`Pinecone index ${indexName} already exists`);
   }
+  return indexName;
 }
 
-async function upsertVectors(indexName, vectors) {
-  const index = pinecone.Index(indexName);
-  await index.upsert({ upsertRequest: { vectors } });
+async function upsertVectors(vectors, namespace) {
+  const index = pinecone.Index(process.env.PINECONE_INDEX_NAME);
+  await index.upsert({
+    upsertRequest: {
+      vectors,
+      namespace
+    }
+  });
 }
 
-async function queryVectors(indexName, queryVector, topK) {
-  const index = pinecone.Index(indexName);
+async function queryVectors(queryVector, namespace, topK = 5) {
+  const index = pinecone.Index(process.env.PINECONE_INDEX_NAME);
   const queryResponse = await index.query({
     queryRequest: {
       vector: queryVector,
-      topK: topK,
+      topK,
       includeValues: true,
       includeMetadata: true,
+      namespace
     },
   });
   return queryResponse.matches;
@@ -52,7 +62,7 @@ async function queryVectors(indexName, queryVector, topK) {
 
 module.exports = {
   initializePinecone,
-  createIndex,
+  ensureIndexExists,
   upsertVectors,
   queryVectors,
 };

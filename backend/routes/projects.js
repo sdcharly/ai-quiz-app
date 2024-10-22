@@ -6,6 +6,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Project = require('../models/Project');
 const auth = require('../middleware/auth');
+const { generateQuestions, processDocuments } = require('../utils/questionGenerator');
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -97,9 +98,51 @@ router.post('/:id/upload', auth, upload.single('document'), async (req, res) => 
     project.documents.push(req.file.path);
     await project.save();
 
+    // Process the document and store embeddings after successful upload
+    try {
+      await processDocuments([req.file.path], project._id);
+      console.log('Document processed and embeddings stored successfully');
+    } catch (processError) {
+      console.error('Error processing document:', processError);
+      // Don't fail the upload if processing fails
+    }
+
     res.json(project);
   } catch (err) {
     console.error('Upload error:', err);
+    res.status(500).json({ msg: 'Server error', error: err.message });
+  }
+});
+
+// @route   POST api/projects/:id/generate-questions
+// @desc    Generate questions for a project
+// @access  Private (Admin only)
+router.post('/:id/generate-questions', auth, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ msg: 'Not authorized' });
+  }
+
+  try {
+    const project = await Project.findById(req.params.id);
+    
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    if (project.documents.length === 0) {
+      return res.status(400).json({ msg: 'No documents found in project' });
+    }
+
+    // Generate questions based on project's questionCount
+    const questions = await generateQuestions(project._id, project.questionCount);
+    
+    if (!questions || questions.length === 0) {
+      return res.status(500).json({ msg: 'Failed to generate questions' });
+    }
+
+    res.json(questions);
+  } catch (err) {
+    console.error('Question generation error:', err);
     res.status(500).json({ msg: 'Server error', error: err.message });
   }
 });
