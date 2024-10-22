@@ -6,7 +6,8 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Project = require('../models/Project');
 const auth = require('../middleware/auth');
-const { generateQuestions, processDocuments } = require('../utils/questionGenerator');
+const { generateQuestions } = require('../utils/questionGenerator');
+const { processDocuments } = require('../utils/vectorStore');
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -101,7 +102,7 @@ router.post('/:id/upload', auth, upload.single('document'), async (req, res) => 
     // Process the document and store embeddings after successful upload
     try {
       await processDocuments([req.file.path], project._id);
-      console.log('Document processed and embeddings stored successfully');
+      console.log('Document processed and stored successfully');
     } catch (processError) {
       console.error('Error processing document:', processError);
       // Don't fail the upload if processing fails
@@ -127,6 +128,10 @@ router.post('/:id/generate-questions', auth, async (req, res) => {
     
     if (!project) {
       return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    if (project.admin.toString() !== req.user.id) {
+      return res.status(401).json({ msg: 'Not authorized' });
     }
 
     if (project.documents.length === 0) {
