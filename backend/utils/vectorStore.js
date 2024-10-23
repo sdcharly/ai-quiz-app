@@ -1,28 +1,18 @@
-const { ChromaClient } = require('chromadb');
-const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
-const { Chroma } = require("langchain/vectorstores/chroma");  // Changed from ChromaStore to Chroma
 const fs = require('fs');
 const path = require('path');
 
-// Create a directory for the Chroma database
-const chromaDirectory = path.join(__dirname, '..', 'chroma-db');
-if (!fs.existsSync(chromaDirectory)) {
-    fs.mkdirSync(chromaDirectory, { recursive: true });
-}
-
-const client = new ChromaClient({
-    path: chromaDirectory
-});
+// Store for our documents
+let documentStore = {};
 
 async function processDocuments(documentPaths, projectId) {
     try {
-        const embeddings = new OpenAIEmbeddings({
-            openAIApiKey: process.env.OPENAI_API_KEY
-        });
+        console.log('Processing documents for project:', projectId);
+        console.log('Document paths:', documentPaths);
 
-        // Read the documents
+        // Read and store documents
         const documents = [];
         for (const docPath of documentPaths) {
+            console.log('Reading document:', docPath);
             const content = fs.readFileSync(docPath, 'utf8');
             documents.push({
                 pageContent: content,
@@ -30,18 +20,10 @@ async function processDocuments(documentPaths, projectId) {
             });
         }
 
-        // Store documents in Chroma
-        const vectorStore = await Chroma.fromDocuments(
-            documents,
-            embeddings,
-            { 
-                collectionName: `project-${projectId}`,
-                url: `http://localhost:8000`,  // Added URL
-                collectionMetadata: {
-                    "hnsw:space": "cosine"
-                }
-            }
-        );
+        // Store documents in memory
+        documentStore[projectId] = documents;
+        console.log('Documents stored for project:', projectId);
+        console.log('Number of documents stored:', documents.length);
 
         return true;
     } catch (error) {
@@ -50,29 +32,15 @@ async function processDocuments(documentPaths, projectId) {
     }
 }
 
-async function queryVectorStore(projectId, query) {
-    try {
-        const embeddings = new OpenAIEmbeddings({
-            openAIApiKey: process.env.OPENAI_API_KEY
-        });
-
-        const vectorStore = await Chroma.fromExistingCollection(
-            embeddings,
-            { 
-                collectionName: `project-${projectId}`,
-                url: `http://localhost:8000`  // Added URL
-            }
-        );
-
-        const results = await vectorStore.similaritySearch(query, 5);
-        return results;
-    } catch (error) {
-        console.error("Error querying vector store:", error);
-        throw error;
-    }
+async function getDocumentsForProject(projectId) {
+    console.log('Retrieving documents for project:', projectId);
+    console.log('Available projects:', Object.keys(documentStore));
+    const documents = documentStore[projectId] || [];
+    console.log('Found documents:', documents.length);
+    return documents;
 }
 
 module.exports = {
     processDocuments,
-    queryVectorStore
+    getDocumentsForProject
 };

@@ -96,16 +96,21 @@ router.post('/:id/upload', auth, upload.single('document'), async (req, res) => 
       return res.status(400).json({ msg: 'No file uploaded' });
     }
 
+    // Add the document path to the project
     project.documents.push(req.file.path);
     await project.save();
 
-    // Process the document and store embeddings after successful upload
+    // Process the document immediately after upload
     try {
-      await processDocuments([req.file.path], project._id);
-      console.log('Document processed and stored successfully');
+      console.log('Processing document:', req.file.path);
+      await processDocuments([req.file.path], project._id.toString());
+      console.log('Document processed successfully');
     } catch (processError) {
       console.error('Error processing document:', processError);
-      // Don't fail the upload if processing fails
+      // Remove the document path from project if processing fails
+      project.documents.pop();
+      await project.save();
+      return res.status(500).json({ msg: 'Failed to process document', error: processError.message });
     }
 
     res.json(project);
@@ -138,6 +143,9 @@ router.post('/:id/generate-questions', auth, async (req, res) => {
       return res.status(400).json({ msg: 'No documents found in project' });
     }
 
+    console.log('Starting question generation for project:', project._id);
+    console.log('Number of documents:', project.documents.length);
+
     // Generate questions based on project's questionCount
     const questions = await generateQuestions(project._id, project.questionCount);
     
@@ -145,10 +153,15 @@ router.post('/:id/generate-questions', auth, async (req, res) => {
       return res.status(500).json({ msg: 'Failed to generate questions' });
     }
 
+    console.log('Successfully generated questions:', questions.length);
     res.json(questions);
   } catch (err) {
     console.error('Question generation error:', err);
-    res.status(500).json({ msg: 'Server error', error: err.message });
+    res.status(500).json({ 
+      msg: 'Server error', 
+      error: err.message,
+      details: err.stack 
+    });
   }
 });
 

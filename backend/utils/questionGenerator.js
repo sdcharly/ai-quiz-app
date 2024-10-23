@@ -1,55 +1,65 @@
 const { OpenAI } = require("langchain/llms/openai");
-const { RetrievalQAChain } = require("langchain/chains");
-const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
-const { Chroma } = require("langchain/vectorstores/chroma");  // Changed from ChromaStore to Chroma
-const fs = require('fs');
+const { getDocumentsForProject } = require('./vectorStore');
 
 async function generateQuestions(projectId, numberOfQuestions) {
     try {
-        const embeddings = new OpenAIEmbeddings({
-            openAIApiKey: process.env.OPENAI_API_KEY
-        });
+        console.log('Generating questions for project:', projectId);
+        
+        // Get documents for this project
+        const documents = await getDocumentsForProject(projectId);
+        
+        if (!documents || documents.length === 0) {
+            throw new Error('No documents found for this project');
+        }
 
-        // Load the vector store
-        const vectorStore = await Chroma.fromExistingCollection(
-            embeddings,
-            { 
-                collectionName: `project-${projectId}`,
-                url: `http://localhost:8000`  // Added URL
-            }
-        );
+        console.log('Found documents:', documents.length);
+
+        // Combine all document content
+        const combinedContent = documents.map(doc => doc.pageContent).join('\n\n');
+        console.log('Combined content length:', combinedContent.length);
 
         const model = new OpenAI({
-            temperature: 0.9,
+            temperature: 0.7,
             openAIApiKey: process.env.OPENAI_API_KEY,
-            modelName: "gpt-4",
         });
 
-        const chain = RetrievalQAChain.fromLLM(model, vectorStore.asRetriever());
         const questions = [];
 
         for (let i = 0; i < numberOfQuestions; i++) {
-            const response = await chain.call({
-                query: `Generate a multiple-choice question based on the document content. 
-                        The question should be challenging but fair, with four options where only one is correct.
-                        Format your response as a valid JSON object with these exact keys:
-                        {
-                          "question": "the question text",
-                          "options": ["option1", "option2", "option3", "option4"],
-                          "correctAnswer": 0,
-                          "explanation": "brief explanation of why the correct answer is right"
-                        }`,
-            });
+            const prompt = `
+            Based on the following content, generate a multiple-choice question:
+            
+            ${combinedContent}
+
+            Generate a question in the following JSON format:
+            {
+                "question": "Write a clear, specific question based on the content",
+                "options": ["correct answer", "wrong but plausible answer", "another wrong answer", "another wrong answer"],
+                "correctAnswer": 0,
+                "explanation": "Brief explanation of why the correct answer is right"
+            }
+
+            Ensure the question is challenging but fair, and all answers are plausible but only one is correct.
+            Return ONLY the JSON object, no other text.`;
+
+            console.log('Generating question', i + 1);
+            const response = await model.call(prompt);
 
             try {
-                const parsedResponse = JSON.parse(response.text);
+                const parsedResponse = JSON.parse(response);
                 questions.push(parsedResponse);
+                console.log('Successfully generated question:', i + 1);
             } catch (error) {
-                console.error("Failed to parse question:", response.text);
+                console.error("Failed to parse question:", response);
                 console.error("Error:", error);
             }
         }
 
+        if (questions.length === 0) {
+            throw new Error('Failed to generate any valid questions');
+        }
+
+        console.log('Successfully generated all questions');
         return questions;
     } catch (error) {
         console.error("Error generating questions:", error);
